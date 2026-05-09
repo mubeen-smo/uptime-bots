@@ -1,0 +1,14 @@
+name: Keep Streamlit App Awake
+
+on:
+  schedule:
+    - cron: "0 */10 * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    name: Ping Streamlit App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit App
+        run: |
+          curl -I -L ${{ secrets.STREAMLIT_APP_URL }}
