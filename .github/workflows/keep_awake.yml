@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Ping Streamlit App
         run: |
-          curl -I -L -v ${{ secrets.SIFT_STREAMLIT_APP_URL }} || echo "Curl exited with code $?"
+          curl -L https://sift-4-qs.streamlit.app/
