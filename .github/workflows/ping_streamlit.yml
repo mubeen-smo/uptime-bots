@@ -2,6 +2,7 @@ name: Keep Streamlit App Awake
 
 on:
   schedule:
+    # Every 10 hours (UTC)
     - cron: "0 */10 * * *"
   workflow_dispatch:
 
@@ -10,36 +11,60 @@ jobs:
     name: Ping Streamlit App
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Streamlit App
+      - name: Wake Streamlit (Playwright)
+        env:
+          SIFT_STREAMLIT_APP_URL: ${{ secrets.SIFT_STREAMLIT_APP_URL }}
         run: |
-          URL="${{ secrets.SIFT_STREAMLIT_APP_URL }}"
-          if [[ -z "$URL" ]]; then
+          if [[ -z "$SIFT_STREAMLIT_APP_URL" ]]; then
             echo "Missing secret: SIFT_STREAMLIT_APP_URL"
             exit 1
           fi
 
-          for i in 1 2 3; do
-            echo "Attempt $i: $URL"
-            CURL_OUT="$(curl -sS -L --max-redirs 40 \
-              --connect-timeout 10 --max-time 60 \
-              --retry 2 --retry-all-errors --retry-delay 5 \
-              -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
-              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
-              -o /dev/null \
-              -w "http_code=%{http_code} num_redirects=%{num_redirects} url_effective=%{url_effective}\n" \
-              "$URL" || true)"
+          python -V
+          python -m pip install --upgrade pip
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
 
-            echo "$CURL_OUT"
-            HTTP_CODE="$(echo "$CURL_OUT" | awk '{print $1}' | cut -d= -f2)"
-            if [[ "$HTTP_CODE" =~ ^2|^3 ]]; then
-              exit 0
-            fi
+          python - <<'PY'
+          import os
+          from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-            sleep 5
-          done
+          url = os.environ["SIFT_STREAMLIT_APP_URL"].rstrip("/") + "/"
+          print(f"Opening: {url}")
 
-          echo "Streamlit ping failed after retries. Debugging final redirect chain:"
-          curl -sS -I -L --max-redirs 40 \
-            -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
-            "$URL" || true
-          exit 1
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page()
+              page.set_default_timeout(120_000)
+
+              try:
+                  page.goto(url, wait_until="domcontentloaded")
+              except PlaywrightTimeoutError:
+                  # Still proceed: Streamlit can be slow to cold-start.
+                  print("Initial navigation timed out; continuing.")
+
+              # If the app is sleeping, Streamlit shows a wake prompt button.
+              wake_button = page.get_by_role("button", name="Yes, get this app back up!")
+              if wake_button.count() > 0:
+                  print("Sleep prompt detected; clicking wake button.")
+                  wake_button.first.click()
+
+              # Verify the backend is actually up by waiting for a websocket request.
+              # If it never connects, the app likely didn't wake (or is blocked).
+              try:
+                  page.wait_for_url(lambda u: True, timeout=5_000)
+              except PlaywrightTimeoutError:
+                  pass
+
+              # Give it some time to start serving; streamlit typically initializes within ~1–2 minutes.
+              try:
+                  page.wait_for_timeout(30_000)
+                  # A simple heuristic: once awake, the DOM will include Streamlit-specific bundles.
+                  content = page.content()
+                  if "gone to sleep due to inactivity" in content.lower():
+                      raise RuntimeError("Still seeing sleep page after wake attempt.")
+              finally:
+                  browser.close()
+
+          print("Wake attempt completed.")
+          PY
