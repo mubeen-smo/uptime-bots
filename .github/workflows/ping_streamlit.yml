@@ -4,11 +4,12 @@ on:
   schedule:
     - cron: "0 */10 * * *"
   workflow_dispatch:
+
 jobs:
-  ping:
+  ping_streamlit:
     name: Ping Streamlit App
     runs-on: ubuntu-latest
     steps:
       - name: Ping Streamlit App
         run: |
-          curl -I -L ${{ secrets.SIFT_STREAMLIT_APP_URL }}
+          curl -s -L --max-redirs 5 https://sift-4-qs.streamlit.app/
