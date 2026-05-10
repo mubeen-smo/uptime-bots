@@ -12,4 +12,23 @@ jobs:
     steps:
       - name: Ping Streamlit App
         run: |
-          curl -s -L --max-redirs 5 https://sift-4-qs.streamlit.app/
+          URL="https://sift-4-qs.streamlit.app/"
+
+          for i in 1 2 3; do
+            echo "Attempt $i: $URL"
+            HTTP_CODE="$(curl -sS -L --max-redirs 20 \
+              --connect-timeout 10 --max-time 60 \
+              --retry 2 --retry-all-errors --retry-delay 5 \
+              -o /dev/null -w "%{http_code}" \
+              "$URL" || true)"
+
+            echo "HTTP $HTTP_CODE"
+            if [[ "$HTTP_CODE" =~ ^2|^3 ]]; then
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "Streamlit ping failed after retries"
+          exit 1
