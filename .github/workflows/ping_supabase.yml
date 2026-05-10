@@ -12,9 +12,25 @@ jobs:
     steps:
       - name: Ping Supabase
         run: |
+          BASE_URL="${{ secrets.SUPABASE_URL }}"
+          ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+          PING_PATH="${{ secrets.SUPABASE_PING_PATH }}"
+
+          if [[ -z "$BASE_URL" ]]; then
+            echo "Missing secret: SUPABASE_URL"
+            exit 1
+          fi
+          if [[ -z "$ANON_KEY" ]]; then
+            echo "Missing secret: SUPABASE_ANON_KEY"
+            exit 1
+          fi
+
+          # Optional override (example): /rest/v1/items_table?select=item_id&limit=1
+          PING_PATH="${PING_PATH:-/rest/v1/items_table?select=item_id&limit=1}"
+
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/items_table?select=item_id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+            "${BASE_URL}${PING_PATH}" \
+            -H "apikey: ${ANON_KEY}" \
+            -H "Authorization: Bearer ${ANON_KEY}")
           echo "Supabase responded: $STATUS"
           [ "$STATUS" = "200" ] || exit 1

@@ -12,17 +12,25 @@ jobs:
     steps:
       - name: Ping Streamlit App
         run: |
-          URL="https://sift-4-qs.streamlit.app/"
+          URL="${{ secrets.SIFT_STREAMLIT_APP_URL }}"
+          if [[ -z "$URL" ]]; then
+            echo "Missing secret: SIFT_STREAMLIT_APP_URL"
+            exit 1
+          fi
 
           for i in 1 2 3; do
             echo "Attempt $i: $URL"
-            HTTP_CODE="$(curl -sS -L --max-redirs 20 \
+            CURL_OUT="$(curl -sS -L --max-redirs 40 \
               --connect-timeout 10 --max-time 60 \
               --retry 2 --retry-all-errors --retry-delay 5 \
-              -o /dev/null -w "%{http_code}" \
+              -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+              -o /dev/null \
+              -w "http_code=%{http_code} num_redirects=%{num_redirects} url_effective=%{url_effective}\n" \
               "$URL" || true)"
 
-            echo "HTTP $HTTP_CODE"
+            echo "$CURL_OUT"
+            HTTP_CODE="$(echo "$CURL_OUT" | awk '{print $1}' | cut -d= -f2)"
             if [[ "$HTTP_CODE" =~ ^2|^3 ]]; then
               exit 0
             fi
@@ -30,5 +38,8 @@ jobs:
             sleep 5
           done
 
-          echo "Streamlit ping failed after retries"
+          echo "Streamlit ping failed after retries. Debugging final redirect chain:"
+          curl -sS -I -L --max-redirs 40 \
+            -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
+            "$URL" || true
           exit 1
