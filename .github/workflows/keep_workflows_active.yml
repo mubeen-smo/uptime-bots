@@ -1,0 +1,21 @@
+name: Keep Workflows Active
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+
+jobs:
+  keep-active:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit timestamp
+        run: |
+          echo "Last kept active: $(date -u)" > .last-active
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .last-active
+          git commit -m "chore: keep workflows active"
+          git push
