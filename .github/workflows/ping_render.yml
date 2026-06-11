@@ -2,7 +2,7 @@ name: MMDb Backend Keep-Alive
 
 on:
   schedule:
-    - cron: "*/14 13-23 * * *"
+    - cron: "*/14 3-18 * * *"
   workflow_dispatch:
 
 jobs:
